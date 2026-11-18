@@ -40,7 +40,7 @@ jobs:
           # the release name is the branch, the Pittsburgh time of the build and the commit
           now=$(date +%s)
           tag="${BRANCH//\//-}-$(TZ=America/New_York date -d @$now +%Y%m%d-%H%M%S)-${sha:0:7}"
-          title="$BRANCH $(TZ=America/New_York date -d @$now '+%Y-%m-%d %H:%M:%S') (${sha:0:7})"
+          title="built from: $BRANCH branch, $(TZ=America/New_York date -d @$now '+%Y-%m-%d %H:%M:%S')"
           if [ "$BRANCH" = main ]; then pre=false; else pre=true; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
