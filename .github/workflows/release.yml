@@ -18,10 +18,10 @@ permissions:
 env:
   # where the game code lives; drop this once the workflow sits in that repo itself
   SOURCE_REPO: Raeshana/Death
-  NEST_LIBS_VERSION: v0.15
+  NEST_LIBS: https://github.com/15-466/nest-libs/releases/download/v0.15
 
 jobs:
-  # pin one commit so every platform builds the same code, and pick the release name
+  # pin one commit so both platforms build the same code, and pick the release name
   meta:
     runs-on: ubuntu-latest
     outputs:
@@ -37,7 +37,6 @@ jobs:
         run: |
           sha=$(git ls-remote "https://github.com/$SOURCE_REPO" "refs/heads/$BRANCH" | cut -f1)
           if [ -z "$sha" ]; then echo "no branch named $BRANCH in $SOURCE_REPO"; exit 1; fi
-          # the release name is the branch, the Pittsburgh time of the build and the commit
           now=$(date +%s)
           tag="${BRANCH//\//-}-$(TZ=America/New_York date -d @$now +%Y%m%d-%H%M%S)-${sha:0:7}"
           title="built from: $BRANCH branch, $(TZ=America/New_York date -d @$now '+%Y-%m-%d %H:%M:%S')"
@@ -48,87 +47,46 @@ jobs:
           echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
           echo "building $SOURCE_REPO $BRANCH at $sha as $tag (prerelease: $pre)"
 
-  build:
+  build-windows:
     needs: meta
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: windows, os: windows-latest }
-          - { name: macos, os: macos-latest }
+    runs-on: windows-latest
     env:
-      NAME: death-${{ matrix.name }}-${{ needs.meta.outputs.tag }}
+      NAME: death-windows-${{ needs.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: ${{ needs.meta.outputs.sha }}
 
-      - name: Set up MSVC
-        if: matrix.name == 'windows'
-        uses: ilammy/msvc-dev-cmd@v1.13.0
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
 
-      - name: Fetch nest-libs
+      - name: Fetch nest-libs, drop committed object files
         shell: bash
         run: |
-          cd ..
-          base="https://github.com/15-466/nest-libs/releases/download/$NEST_LIBS_VERSION"
-          if [ "${{ matrix.name }}" = windows ]; then
-            curl -fL -o nest-libs.zip "$base/nest-libs-windows-$NEST_LIBS_VERSION.zip"
-            7z x -y nest-libs.zip > /dev/null
-          else
-            curl -fL -o nest-libs.tar.gz "$base/nest-libs-macos-$NEST_LIBS_VERSION.tar.gz"
-            tar xzf nest-libs.tar.gz
-          fi
-          ls nest-libs
-
-      # the repo carries object files built on someone's laptop, never link those
-      - name: Remove committed object files
-        shell: bash
-        run: rm -rf objs
+          rm -rf objs
+          curl -fL -o ../nest-libs.zip "$NEST_LIBS/nest-libs-windows-v0.15.zip"
+          7z x -y -o.. ../nest-libs.zip > /dev/null
 
       # cmd, not bash: Git Bash puts its own coreutils link.exe ahead of the MSVC
       # one on PATH, and that link does not understand MSVC flags
-      - name: Build (Windows)
-        if: matrix.name == 'windows'
+      - name: Build
         shell: cmd
         run: node Maekfile.js -q dist/game.exe
 
-      - name: Build (macOS)
-        if: matrix.name == 'macos'
-        shell: bash
-        run: |
-          node Maekfile.js -q dist/game
-          file dist/game
-
+      # keep the dist folder inside the package: text-pipeline.cpp opens the font as
+      # "dist/LowresPixel-Regular.otf" relative to the working directory
       - name: Package
         shell: bash
         run: |
-          cp ../nest-libs/*/*/dist/README-*.txt dist/
-          if [ "${{ matrix.name }}" = windows ]; then
-            # without the dll the exe will not start
-            cp ../nest-libs/windows/SDL3/dist/SDL3.dll dist/
-            rm -f dist/game.pdb dist/*.ilk
-          fi
-          # keep the dist folder inside the package: text-pipeline.cpp opens the font as
-          # "dist/LowresPixel-Regular.otf" relative to the working directory, so the game
-          # has to be started from the folder that contains dist
-          mkdir "$NAME"
-          mv dist "$NAME/dist"
-          if [ "${{ matrix.name }}" = windows ]; then
-            7z a -r "$NAME.zip" "$NAME" > /dev/null
-          else
-            tar czf "$NAME.tar.gz" "$NAME"
-          fi
-          ls -l "$NAME".*
+          cp ../nest-libs/windows/SDL3/dist/SDL3.dll ../nest-libs/windows/*/dist/README-*.txt dist/
+          rm -f dist/game.pdb dist/*.ilk
+          mkdir "$NAME" && mv dist "$NAME/dist"
+          7z a -r "$NAME.zip" "$NAME" > /dev/null
 
       # The runner has no GPU, so the game cannot get an OpenGL 3.3 context and stops
       # early. That still catches a missing dll: then the process dies before main()
       # prints anything at all.
-      - name: Smoke test (Windows)
-        if: matrix.name == 'windows'
+      - name: Smoke test
         shell: pwsh
         timeout-minutes: 5
         run: |
@@ -160,21 +118,52 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
+          name: windows
+          path: ${{ env.NAME }}.zip
           if-no-files-found: error
-          path: |
-            *.zip
-            *.tar.gz
+
+  build-macos:
+    needs: meta
+    runs-on: macos-latest
+    env:
+      NAME: death-macos-${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.sha }}
+
+      - name: Fetch nest-libs, drop committed object files
+        run: |
+          rm -rf objs
+          curl -fL "$NEST_LIBS/nest-libs-macos-v0.15.tar.gz" | tar xz -C ..
+
+      - name: Build
+        run: |
+          node Maekfile.js -q dist/game
+          file dist/game
+
+      # keep the dist folder inside the package, see the Windows job
+      - name: Package
+        run: |
+          cp ../nest-libs/macos/*/dist/README-*.txt dist/
+          mkdir "$NAME" && mv dist "$NAME/dist"
+          tar czf "$NAME.tar.gz" "$NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: ${{ env.NAME }}.tar.gz
+          if-no-files-found: error
 
   release:
-    needs: [meta, build]
+    needs: [meta, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: packages
       - name: Publish
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.meta.outputs.tag }}
