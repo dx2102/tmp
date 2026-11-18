@@ -117,6 +117,7 @@ jobs:
           name: windows
           path: ${{ env.NAME }}.zip
           if-no-files-found: error
+          retention-days: 1 # only needed until the release job picks it up
 
   build-macos:
     needs: meta
@@ -145,6 +146,7 @@ jobs:
           name: macos
           path: ${{ env.NAME }}.tar.gz
           if-no-files-found: error
+          retention-days: 1 # only needed until the release job picks it up
 
   release:
     needs: [meta, build-windows, build-macos]
