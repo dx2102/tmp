@@ -68,7 +68,7 @@ struct SoulCaptureMode : Mode {
 	//the lifeline looks like a heart monitor trace. One beat every 4/3 s (45 per minute)
 	//matches the 880 Hz beep in Hospital_Theme.wav, which keeps playing in the minigame:
 	static constexpr float BeatSeconds = 4.0f / 3.0f;
-	static constexpr float TraceSeconds = 2.0f; //how much time the trace shows along the line
+	static constexpr float TraceSeconds = 1.0f; //how much time the trace shows along the line, less scrolls faster
 	static constexpr float TraceHeight = 0.09f; //height of the spike, the soul is 0.1 across its radius
 	//trace height (about -0.3 to 1) at a point of the beat, phase 0 is the spike:
 	static float heartbeat(float phase) {
