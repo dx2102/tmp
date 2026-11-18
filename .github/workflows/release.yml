@@ -11,6 +11,9 @@ on:
         description: Branch to build
         default: main
         required: true
+      notes:
+        description: Notes for this release (optional)
+        required: false
 
 permissions:
   contents: write
@@ -157,11 +160,12 @@ jobs:
           TITLE: ${{ needs.meta.outputs.title }}
           SHA: ${{ needs.meta.outputs.sha }}
           BRANCH: ${{ inputs.branch }}
+          NOTES: ${{ inputs.notes }}
           PRE: ${{ needs.meta.outputs.prerelease }}
         run: |
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           cat > notes.md <<EOF
-          Built from \`$BRANCH\` of $SOURCE_REPO at commit $SHA.
+          Built from \`$BRANCH\` of $SOURCE_REPO at commit [${SHA:0:7}](https://github.com/$SOURCE_REPO/commit/$SHA).
 
           ## Running it
 
@@ -185,6 +189,8 @@ jobs:
 
           Open [Actions > Release](https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml), click **Run workflow**, type the branch to build and press the green button. A new release shows up here about two minutes later.
           EOF
+          #the optional notes typed into the Run workflow form go first:
+          if [ -n "$NOTES" ]; then { printf '%s\n\n' "$NOTES"; cat notes.md; } > with-notes.md && mv with-notes.md notes.md; fi
           flag=""
           if [ "$PRE" = true ]; then flag="--prerelease"; fi
           gh release create "$TAG" packages/*/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
