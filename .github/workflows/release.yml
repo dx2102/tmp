@@ -187,9 +187,9 @@ jobs:
 
           ## Making a new build
 
-          Open [Actions > Release](https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml), click **Run workflow**, type the branch to build and press the green button. A new release shows up here about two minutes later.
+          Open https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml , click **Run workflow**, type the branch to build and press the green button. A new release shows up here about two minutes later.
           EOF
-          #the optional notes typed into the Run workflow form go first:
+          # the optional notes typed into the Run workflow form go first:
           if [ -n "$NOTES" ]; then { printf '%s\n\n' "$NOTES"; cat notes.md; } > with-notes.md && mv with-notes.md notes.md; fi
           flag=""
           if [ "$PRE" = true ]; then flag="--prerelease"; fi
