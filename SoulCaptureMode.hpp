@@ -4,7 +4,6 @@
 #include "PixelCanvas.hpp"
 #include "Sprites.hpp"
 #include "text-pipeline.hpp"
-#include "TextImage.hpp"
 
 #include <glm/glm.hpp>
 
@@ -66,6 +65,25 @@ struct SoulCaptureMode : Mode {
 	float lifeline_angle = 0.0f;
 	float lifeline_base_angle = 0.0f;
 	float lifeline_half_length = 0.25f;
+	//the lifeline looks like a heart monitor trace. One beat every 4/3 s (45 per minute)
+	//matches the 880 Hz beep in Hospital_Theme.wav, which keeps playing in the minigame:
+	static constexpr float BeatSeconds = 4.0f / 3.0f;
+	static constexpr float TraceSeconds = 2.0f; //how much time the trace shows along the line
+	static constexpr float TraceHeight = 0.09f; //height of the spike, the soul is 0.1 across its radius
+	//trace height (about -0.3 to 1) at a point of the beat, phase 0 is the spike:
+	static float heartbeat(float phase) {
+		auto bump = [&](float center, float width, float height) {
+			float d = phase - center;
+			d -= std::round(d); //wrap around so bumps near the ends of the beat show up too
+			return height * std::exp(-0.5f * (d / width) * (d / width));
+		};
+		//wider than a real ECG: the line is only about 60 canvas pixels long
+		return bump(-0.25f, 0.05f, 0.15f) //P wave
+			+ bump(-0.06f, 0.018f, -0.2f) //Q
+			+ bump(0.0f, 0.022f, 1.0f) //R, the spike
+			+ bump(0.06f, 0.018f, -0.35f) //S
+			+ bump(0.3f, 0.07f, 0.3f); //T wave
+	}
 	glm::vec2 lifeline_dir() const { return glm::vec2(std::cos(lifeline_angle), std::sin(lifeline_angle)); }
 	glm::vec2 lifeline_end(float side) const { return soul_position() + side * lifeline_half_length * lifeline_dir(); }
 	uint32_t hits = 0;

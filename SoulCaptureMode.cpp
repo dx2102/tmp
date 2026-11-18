@@ -296,12 +296,6 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 		};
 		glm::u8vec4 const soul_color = glm::u8vec4(0x99, 0xdd, 0xff, 0xff);
 
-		auto thick_line = [&](glm::vec2 a, glm::vec2 b, float width, glm::u8vec4 color) {
-			lines.fill_line(a, b, width, color);
-			lines.fill_circle(a, 0.5f * width, color, 12);
-			lines.fill_circle(b, 0.5f * width, color, 12);
-		};
-
 		circle(glm::vec2(0.0f), ArenaRadius, glm::u8vec4(0x44, 0x44, 0x55, 0xff));
 		circle(soul_position(), keep_out_radius, glm::u8vec4(0x2a, 0x2a, 0x36, 0xff));
 		bool soul_gone = captured && slash_reached_lifeline();
@@ -319,7 +313,24 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		if (!soul_gone) {
-			thick_line(lifeline_end(-1.0f), lifeline_end(1.0f), 0.02f, glm::u8vec4(0xff, 0xee, 0x88, 0xff));
+			//the lifeline is drawn as a heart monitor trace scrolling along it; hits are
+			//still checked against the straight line, so this only changes the look
+			glm::vec2 a = lifeline_end(-1.0f), b = lifeline_end(1.0f);
+			glm::vec2 across = glm::vec2(-lifeline_dir().y, lifeline_dir().x);
+			glm::u8vec4 const trace = glm::u8vec4(0xff, 0xee, 0x88, 0xff);
+			constexpr uint32_t Steps = 96;
+			glm::vec2 prev = a;
+			for (uint32_t i = 0; i <= Steps; ++i) {
+				float s = i / float(Steps); //0 is the oldest end of the trace, 1 the newest
+				float beat = (clock - (1.0f - s) * TraceSeconds) / BeatSeconds;
+				glm::vec2 at = glm::mix(a, b, s) + TraceHeight * heartbeat(beat - std::floor(beat)) * across;
+				if (i > 0) {
+					glm::u8vec4 color = fade(trace, 0.5f * (1.0f - s));
+					lines.fill_line(prev, at, 0.02f, color);
+					lines.fill_circle(at, 0.01f, color, 8);
+				}
+				prev = at;
+			}
 			for (uint32_t i = 0; i < HitsNeeded; ++i) {
 				float angle = 0.5f * float(M_PI) - i / float(HitsNeeded) * 2.0f * float(M_PI);
 				glm::vec2 at = soul_position() + keep_out_radius * glm::vec2(std::cos(angle), std::sin(angle));

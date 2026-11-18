@@ -168,7 +168,6 @@ const game_names = [
 	maek.CPP('main.cpp'),
 	maek.CPP('LitColorTextureProgram.cpp'),
 	maek.CPP('text-pipeline.cpp'),
-	maek.CPP('TextImage.cpp'),
 	maek.CPP('Sprites.cpp'),
 	//maek.CPP('ColorTextureProgram.cpp'),  //not used right now, but you might want it
 	maek.CPP('Sound.cpp'),
