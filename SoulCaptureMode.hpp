@@ -141,7 +141,7 @@ struct SoulCaptureMode : Mode {
 
 	//text is drawn at screen resolution on top of the canvas. The font size follows the
 	//size of the canvas on screen, so text keeps its size relative to the pixel art:
-	static constexpr float LinesPerCanvas = 20.0f; //font size is canvas height / this
+	static constexpr float LinesPerCanvas = 24.0f; //font size is canvas height / this
 	std::unique_ptr< Font > font;
 	struct TextLine {
 		std::string text; //what image was rendered from, to skip rendering it again
