@@ -1,0 +1,198 @@
+# Build the game for Windows and macOS and publish both as a GitHub release.
+# Run it from the Actions tab ("Run workflow"), pick the branch to build.
+# Builds from main become normal releases, other branches become prereleases.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build
+        default: main
+        required: true
+      version:
+        description: Release name, e.g. v1.4 (leave empty for an automatic name)
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  # where the game code lives; drop this once the workflow sits in that repo itself
+  SOURCE_REPO: Raeshana/Death
+  NEST_LIBS_VERSION: v0.15
+
+jobs:
+  # pin one commit so every platform builds the same code, and pick the release name
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.m.outputs.sha }}
+      tag: ${{ steps.m.outputs.tag }}
+      prerelease: ${{ steps.m.outputs.prerelease }}
+    steps:
+      - id: m
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.branch }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          sha=$(git ls-remote "https://github.com/$SOURCE_REPO" "refs/heads/$BRANCH" | cut -f1)
+          if [ -z "$sha" ]; then echo "no branch named $BRANCH in $SOURCE_REPO"; exit 1; fi
+          if [ -n "$VERSION" ]; then
+            tag="$VERSION"
+          else
+            tag="${BRANCH//\//-}-$(date -u +%Y%m%d-%H%M)-${sha:0:7}"
+          fi
+          if [ "$BRANCH" = main ]; then pre=false; else pre=true; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          echo "building $SOURCE_REPO $BRANCH at $sha as $tag (prerelease: $pre)"
+
+  build:
+    needs: meta
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows, os: windows-latest }
+          - { name: macos, os: macos-latest }
+    env:
+      NAME: death-${{ matrix.name }}-${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.sha }}
+
+      - name: Set up MSVC
+        if: matrix.name == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+
+      - name: Fetch nest-libs
+        shell: bash
+        run: |
+          cd ..
+          base="https://github.com/15-466/nest-libs/releases/download/$NEST_LIBS_VERSION"
+          if [ "${{ matrix.name }}" = windows ]; then
+            curl -fL -o nest-libs.zip "$base/nest-libs-windows-$NEST_LIBS_VERSION.zip"
+            7z x -y nest-libs.zip > /dev/null
+          else
+            curl -fL -o nest-libs.tar.gz "$base/nest-libs-macos-$NEST_LIBS_VERSION.tar.gz"
+            tar xzf nest-libs.tar.gz
+          fi
+          ls nest-libs
+
+      # the repo carries object files built on someone's laptop, never link those
+      - name: Remove committed object files
+        shell: bash
+        run: rm -rf objs
+
+      # cmd, not bash: Git Bash puts its own coreutils link.exe ahead of the MSVC
+      # one on PATH, and that link does not understand MSVC flags
+      - name: Build (Windows)
+        if: matrix.name == 'windows'
+        shell: cmd
+        run: node Maekfile.js -q dist/game.exe
+
+      - name: Build (macOS)
+        if: matrix.name == 'macos'
+        shell: bash
+        run: |
+          node Maekfile.js -q dist/game
+          file dist/game
+
+      - name: Package
+        shell: bash
+        run: |
+          cp ../nest-libs/*/*/dist/README-*.txt dist/
+          if [ "${{ matrix.name }}" = windows ]; then
+            # without the dll the exe will not start
+            cp ../nest-libs/windows/SDL3/dist/SDL3.dll dist/
+            rm -f dist/game.pdb dist/*.ilk
+          fi
+          # keep the dist folder inside the package: text-pipeline.cpp opens the font as
+          # "dist/LowresPixel-Regular.otf" relative to the working directory, so the game
+          # has to be started from the folder that contains dist
+          mkdir "$NAME"
+          mv dist "$NAME/dist"
+          if [ "${{ matrix.name }}" = windows ]; then
+            7z a -r "$NAME.zip" "$NAME" > /dev/null
+          else
+            tar czf "$NAME.tar.gz" "$NAME"
+          fi
+          ls -l "$NAME".*
+
+      # The runner has no GPU, so the game cannot get an OpenGL 3.3 context and stops
+      # early. That still catches a missing dll: then the process dies before main()
+      # prints anything at all.
+      - name: Smoke test (Windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $exe = Join-Path $PWD "$env:NAME\dist\game.exe"
+          Write-Host "--- imports ---"
+          $deps = (dumpbin /dependents $exe | Select-String -Pattern '^\s+(\S+\.dll)$').Matches | ForEach-Object { $_.Groups[1].Value }
+          $missing = @()
+          foreach ($d in $deps) {
+            if ($d -match '^(api|ext)-ms-win-') { $where = "api set, resolved by the loader" }
+            elseif (Test-Path (Join-Path $PWD "$env:NAME\dist\$d")) { $where = "shipped in the package" }
+            elseif (Test-Path (Join-Path $env:SystemRoot "System32\$d")) { $where = "on the system" }
+            else { $where = "NOT FOUND"; $missing += $d }
+            Write-Host ("{0,-28} {1}" -f $d, $where)
+          }
+          if ($missing.Count -gt 0) { throw "these dlls are neither shipped nor on the system: $($missing -join ', ')" }
+
+          Write-Host "--- launch ---"
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Join-Path $PWD $env:NAME) -PassThru `
+                 -RedirectStandardOutput smoke-out.txt -RedirectStandardError smoke-err.txt
+          $alive = -not $p.WaitForExit(20000)
+          if ($alive) { $p.Kill(); $p.WaitForExit() }
+          $out = (Get-Content smoke-out.txt -Raw -ErrorAction SilentlyContinue)
+          Write-Host "stdout:"; Write-Host $out
+          Write-Host "stderr:"; Write-Host (Get-Content smoke-err.txt -Raw -ErrorAction SilentlyContinue)
+          if (-not ($out -match 'Code page is properly set')) {
+            throw "game.exe never reached main(): exit code 0x$('{0:X8}' -f $p.ExitCode). A dll is probably missing."
+          }
+          Write-Host "RESULT: main() ran (exit code $($p.ExitCode), alive: $alive)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            *.zip
+            *.tar.gz
+
+  release:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          BRANCH: ${{ inputs.branch }}
+          PRE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          cat > notes.md <<EOF
+          Built from \`$BRANCH\` of $SOURCE_REPO at commit $SHA.
+
+          Start the game from the unpacked folder (the one that contains \`dist\`), otherwise it cannot find its font and quits.
+
+          - Windows: unzip, open a terminal in the unzipped folder, run \`dist\\game.exe\`.
+          - macOS (Apple silicon only): unpack, \`cd\` into the folder, run \`xattr -dr com.apple.quarantine .\` once, then \`./dist/game\`.
+          EOF
+          flag=""
+          if [ "$PRE" = true ]; then flag="--prerelease"; fi
+          gh release create "$TAG" packages/*/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --notes-file notes.md $flag
