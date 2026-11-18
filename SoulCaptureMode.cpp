@@ -25,22 +25,22 @@ glm::vec2 SoulCaptureMode::wander() const {
 SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
 	Difficulty d; //every level keeps the gentle soul movement, only the mechanic differs
 	if (n <= 1) {
-		d.name = "level 1: pauses";
+		d.name = "difficulty 1: pauses";
 		d.mechanic = Mechanic::Pauses;
 		//it darts around more so the sudden stops are noticeable:
 		d.wander_radius = 0.12f;
 		d.wander_speed = 1.3f;
 	} else if (n == 2) {
-		d.name = "level 2: flees";
+		d.name = "difficulty 2: flees";
 		d.mechanic = Mechanic::Flees;
 	} else if (n == 3) {
-		d.name = "level 3: shield";
+		d.name = "difficulty 3: shield";
 		d.mechanic = Mechanic::Shield;
 	} else if (n == 4) {
-		d.name = "level 4: planks";
+		d.name = "difficulty 4: planks";
 		d.mechanic = Mechanic::Planks;
 	} else {
-		d.name = "level 5: mends";
+		d.name = "difficulty 5: mends";
 		d.mechanic = Mechanic::Mends;
 	}
 	return d;
@@ -159,7 +159,7 @@ void SoulCaptureMode::slice() {
 		if (hits >= HitsNeeded) {
 			captured = true;
 			burst_pending = 80;
-			message = return_to ? "Soul captured! Press Space to continue." : "Soul captured!  R: retry   1-5: level";
+			message = return_to ? "Soul captured! Press Space to continue." : "Soul captured!  R: retry   1-5: difficulty";
 		} else {
 			burst_pending = 12;
 			message = "Hit! " + std::to_string(HitsNeeded - hits) + " more to go.";
@@ -526,7 +526,7 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 		snprintf(buf, sizeof(buf), "hits %u/%u", hits, HitsNeeded);
 		set_text(hits_line, buf);
 		draw_line(hits_line, glm::vec2(margin, PixelCanvas::Height - 2.4f * line_height), Green);
-		set_text(keys_line, "playtest: keys 1-5 switch the level");
+		set_text(keys_line, "playtest: keys 1-5 switch the difficulty");
 		draw_line(keys_line, glm::vec2(margin, PixelCanvas::Height - 3.6f * line_height), glm::u8vec4(0x99, 0x99, 0xaa, 0xff));
 
 		if (captured || message_time > 0.0f) {
