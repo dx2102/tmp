@@ -90,7 +90,6 @@ void SoulCaptureMode::slice() {
 			sparks.emplace_back(s);
 		}
 	}
-	actual_slice_pos = actual_mouse_pos;
 	message_time = 1.5f;
 	if (!check.crosses) {
 		message = "Missed the lifeline.";
@@ -173,7 +172,6 @@ bool SoulCaptureMode::handle_event(SDL_Event const &evt, glm::uvec2 const &windo
 		}
 	} else if (evt.type == SDL_EVENT_MOUSE_MOTION) {
 		mouse = canvas.from_window(glm::vec2(evt.motion.x, evt.motion.y), window_size);
-		actual_mouse_pos = glm::vec2(evt.motion.x, evt.motion.y);
 		return true;
 	}
 
@@ -372,37 +370,61 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 	//text is drawn after the canvas is on screen, so it gets full resolution and the
 	//same pixel font as the dialogue box instead of 15 pixel tall line art:
 	{
-		float left = canvas.rect.x * drawable_size.x;
-		float bottom = canvas.rect.y * drawable_size.y;
-		float high = canvas.rect.w * drawable_size.y;
-		auto hud_text = [&](std::string const &str, float x, float y, glm::vec3 const &color) {
-			hud.color = color;
-			hud.textbox_width = canvas.rect.z * drawable_size.x;
-			hud.textbox_height = FONT_SIZE;
-			hud.pen_x_start = x;
-			hud.pen_y_start = y;
-			hud.handle_curr_line(str + "\n");
-			hud.draw_curr_line(drawable_size);
+		//the font follows the size of the canvas on screen; a new font means every line renders again:
+		float canvas_height = canvas.rect.w * drawable_size.y;
+		uint32_t font_size = std::max(8u, uint32_t(std::lround(canvas_height / LinesPerCanvas)));
+		bool new_font = !font || font->pixel_size != font_size;
+		if (new_font) font = std::make_unique< Font >(data_path("LowresPixel-Regular.otf"), font_size);
+		auto set_text = [&](TextLine &line, std::string const &text) {
+			if (new_font || line.text != text) {
+				line.image = render_text(*font, text);
+				line.text = text;
+			}
 		};
-		
-		glm::vec3 const grey = glm::vec3(0.67f);
-		(void)grey;
-		glm::vec3 const green = glm::vec3(Green) / 255.0f;
-		glm::vec3 const orange = glm::vec3(Orange) / 255.0f;
+
+		//positions below are in canvas pixels: 256 x 240 with (0,0) at the lower left
+		float const line_height = PixelCanvas::Height / LinesPerCanvas;
+		float const margin = 0.5f * line_height;
+		auto draw_line = [&](TextLine const &line, glm::vec2 baseline_start, glm::u8vec4 color, float alpha = 1.0f) {
+			glm::vec4 rgba = glm::vec4(glm::vec3(color) / 255.0f, alpha);
+			draw_text(line.image, canvas.pixel_to_drawable(baseline_start, drawable_size), rgba, drawable_size);
+		};
+		auto width_in_pixels = [&](TextLine const &line) {
+			return line.image.advance / (canvas.rect.z * drawable_size.x) * PixelCanvas::Width;
+		};
 
 		char buf[128];
 		snprintf(buf, sizeof(buf), "%s  misses %u  %.1fs", difficulty.name, misses, timer);
-		hud_text(buf, left + FONT_SIZE, bottom + high - 1.4f * FONT_SIZE, glm::vec3(1.0f));
+		set_text(status_line, buf);
+		draw_line(status_line, glm::vec2(margin, PixelCanvas::Height - 1.2f * line_height), White);
 		snprintf(buf, sizeof(buf), "hits %u/%u", hits, HitsNeeded);
-		hud_text(buf, left + FONT_SIZE, bottom + high - 2.8f * FONT_SIZE, green);
+		set_text(hits_line, buf);
+		draw_line(hits_line, glm::vec2(margin, PixelCanvas::Height - 2.4f * line_height), Green);
+
 		if (captured || message_time > 0.0f) {
-			glm::vec3 color = slice_check.hit ? green : orange;
-			// if (!captured) color = glm::mix(color, Background, glm::clamp(1.0f - message_time / 0.5f, 0.0f, 1.0f));
-			hud_text(message, (float)actual_slice_pos.x, (float)actual_slice_pos.y, color);
+			//show the result just above where the cut started, kept inside the canvas
+			//and below the two lines at the top:
+			set_text(message_line, message);
+			float width = width_in_pixels(message_line);
+			glm::vec2 at = canvas.world_to_pixel(slice_a) + glm::vec2(-0.5f * width, 1.5f * line_height);
+			at.x = std::clamp(at.x, margin, std::max(margin, PixelCanvas::Width - margin - width));
+			at.y = std::clamp(at.y, 5.5f * line_height, PixelCanvas::Height - 3.6f * line_height);
+			//fade out over the last half second:
+			float alpha = captured ? 1.0f : std::min(1.0f, message_time / 0.5f);
+			draw_line(message_line, at, slice_check.hit ? Green : Orange, alpha);
 		}
-		hud_text("Cut ACROSS the yellow lifeline.", left + FONT_SIZE, bottom + 3.6f * FONT_SIZE, White);
-		hud_text("WASD moves, mouse aims, Space cuts.", left + FONT_SIZE, bottom + 2.3f * FONT_SIZE, White);
-		if (!captured) hud_text("Try exploring the room if it's too hard! Esc steps back into the ward.", left + FONT_SIZE, bottom + 1.0f * FONT_SIZE, White);
+
+		static char const *const help[4] = {
+			"Cut ACROSS the yellow lifeline.",
+			"WASD moves, mouse aims, Space cuts.",
+			"Try exploring the room if it's too hard!",
+			"Esc steps back into the ward.",
+		};
+		uint32_t help_count = captured ? 2 : 4;
+		for (uint32_t i = 0; i < help_count; ++i) {
+			set_text(help_lines[i], help[i]);
+			draw_line(help_lines[i], glm::vec2(margin, margin + (help_count - 1 - i) * 1.2f * line_height), White);
+		}
 	}
 
 	GL_ERRORS();

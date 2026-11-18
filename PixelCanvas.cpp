@@ -55,6 +55,15 @@ glm::vec2 PixelCanvas::from_window(glm::vec2 const &position, glm::uvec2 const &
 	return glm::vec2((uv.x * 2.0f - 1.0f) * Aspect, uv.y * 2.0f - 1.0f);
 }
 
+glm::vec2 PixelCanvas::world_to_pixel(glm::vec2 const &world) const {
+	return glm::vec2((world.x / Aspect + 1.0f) * 0.5f * Width, (world.y + 1.0f) * 0.5f * Height);
+}
+
+glm::vec2 PixelCanvas::pixel_to_drawable(glm::vec2 const &pixel, glm::uvec2 const &drawable_size) const {
+	glm::vec2 size = glm::vec2(drawable_size);
+	return glm::vec2(rect.x, rect.y) * size + pixel / glm::vec2(Width, Height) * glm::vec2(rect.z, rect.w) * size;
+}
+
 glm::mat4 PixelCanvas::world_to_clip() const {
 	return glm::mat4(
 		1.0f / Aspect, 0.0f, 0.0f, 0.0f,

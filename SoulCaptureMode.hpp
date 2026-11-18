@@ -4,11 +4,13 @@
 #include "PixelCanvas.hpp"
 #include "Sprites.hpp"
 #include "text-pipeline.hpp"
+#include "TextImage.hpp"
 
 #include <glm/glm.hpp>
 
 #include <cmath>
 
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -119,7 +121,15 @@ struct SoulCaptureMode : Mode {
 	PixelCanvas canvas;
 	std::shared_ptr< Mode > return_to;
 
-	TextProcessor hud;
+	//text is drawn at screen resolution on top of the canvas. The font size follows the
+	//size of the canvas on screen, so text keeps its size relative to the pixel art:
+	static constexpr float LinesPerCanvas = 20.0f; //font size is canvas height / this
+	std::unique_ptr< Font > font;
+	struct TextLine {
+		std::string text; //what image was rendered from, to skip rendering it again
+		TextImage image;
+	};
+	TextLine status_line, hits_line, message_line, help_lines[4];
 
 	Sprites sprites;
 	Sprites::Texture scythe_tex;
@@ -128,11 +138,4 @@ struct SoulCaptureMode : Mode {
 	float reach = 0.6f;
 	float move_speed = 1.2f; //world units per second, the arena is 0.8 across its radius
 	float slice_cooldown = 0.4f;
-
-	// --------- feedback text -----------
-	TextProcessor text_processor;
-	glm::uvec2 actual_mouse_pos;
-	glm::uvec2 actual_slice_pos;
-	char score_data[128];
-	char message_data[128];
 };
