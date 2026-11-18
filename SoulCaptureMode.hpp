@@ -17,14 +17,20 @@
 #include "Sprites.hpp"
 
 struct SoulCaptureMode : Mode {
+	//for playtesting, every level adds one mechanic to the same soul and lifeline:
+	enum class Mechanic { None, Pauses, Flees, Shield, Planks, Mends };
 	struct Difficulty {
 		char const *name = "normal";
 		float lifeline_swing = 0.0f; //how far the lifeline swings to each side of its starting angle, in radians
 		float wander_radius = 0.05f;
 		float wander_speed = 0.6f;
+		Mechanic mechanic = Mechanic::None;
 	};
-	static Difficulty normal() { return Difficulty{ "normal", 0.0f, 0.05f, 0.6f }; }
-	static Difficulty hard() { return Difficulty{ "hard", 0.3927f, 0.12f, 1.3f }; } //swings 22.5 degrees each way, 45 degrees in total
+	static constexpr uint32_t Levels = 5;
+	static Difficulty level(uint32_t n); //1 to Levels
+	//PlayMode asks for these two: normal after reading the diary, hard otherwise
+	static Difficulty normal() { return level(1); }
+	static Difficulty hard() { return level(3); }
 	static constexpr float AngleTolerance = 0.6109f; //35 degrees
 	static constexpr uint32_t HitsNeeded = 5;
 
@@ -41,6 +47,8 @@ struct SoulCaptureMode : Mode {
 		bool crosses = false;
 		float angle_error = 0.0f;
 		bool hit = false;
+		bool blocked = false; //a plank stops the blade before it reaches the lifeline
+		bool shielded = false; //the soul was shielded, so even a good cut does nothing
 		glm::vec2 point = glm::vec2(0.0f);
 	};
 	SliceCheck check_slice(glm::vec2 a, glm::vec2 b) const;
@@ -56,6 +64,8 @@ struct SoulCaptureMode : Mode {
 	glm::vec2 soul_velocity = glm::vec2(0.0f);
 	glm::vec2 wander_phase = glm::vec2(0.0f);
 	float clock = 0.0f;
+	//drives the soul's wandering and the lifeline's swing; stops while the soul pauses:
+	float move_clock = 0.0f;
 	glm::vec2 wander() const;
 	glm::vec2 soul_position() const { return soul_center + soul_offset + wander(); }
 	bool move_pending = false;
@@ -132,9 +142,27 @@ struct SoulCaptureMode : Mode {
 	std::string message;
 	float message_time = 0.0f;
 
+	bool message_good = false; //green or orange
+
 	float cooldown = 0.0f;
 	float timer = 0.0f;
 	bool captured = false;
+
+	//---- level 1: the soul freezes for a moment now and then ----
+	float pause_left = 0.0f, next_pause = 2.0f;
+	//---- level 2: the soul slowly backs away from the scythe ----
+	static constexpr float FleeRadius = 0.55f; //starts backing away when the scythe is this close
+	static constexpr float FleeSpeed = 0.5f; //world units per second when the scythe is right on it
+	//---- level 3: the soul is shielded for ShieldSeconds out of every ShieldPeriod ----
+	static constexpr float ShieldPeriod = 5.0f, ShieldSeconds = 2.0f;
+	bool shielded() const { return difficulty.mechanic == Mechanic::Shield && !captured && std::fmod(clock, ShieldPeriod) > ShieldPeriod - ShieldSeconds; }
+	//---- level 4: planks that stop the blade (but not the scythe walking) ----
+	struct Plank { glm::vec2 a, b; };
+	std::vector< Plank > planks;
+	static constexpr float PlankWidth = 0.03f;
+	//---- level 5: the soul mends one hit for every MendSeconds without a new hit ----
+	static constexpr float MendSeconds = 4.0f;
+	float mend_clock = 0.0f;
 
 	PixelCanvas canvas;
 	std::shared_ptr< Mode > return_to;
@@ -147,7 +175,7 @@ struct SoulCaptureMode : Mode {
 		std::string text; //what image was rendered from, to skip rendering it again
 		TextImage image;
 	};
-	TextLine status_line, hits_line, message_line, help_lines[4];
+	TextLine status_line, hits_line, keys_line, message_line, help_lines[4];
 
 	Sprites sprites;
 	Sprites::Texture scythe_tex;
