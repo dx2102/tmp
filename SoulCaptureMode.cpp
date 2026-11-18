@@ -317,7 +317,7 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 			//still checked against the straight line, so this only changes the look
 			glm::vec2 a = lifeline_end(-1.0f), b = lifeline_end(1.0f);
 			glm::vec2 across = glm::vec2(-lifeline_dir().y, lifeline_dir().x);
-			glm::u8vec4 const trace = glm::u8vec4(0xff, 0xee, 0x88, 0xff);
+			glm::u8vec4 const trace = glm::u8vec4(0x80, 0xcc, 0xff, 0xff); //a little deeper than the soul's 0x99ddff
 			constexpr uint32_t Steps = 96;
 			glm::vec2 prev = a;
 			for (uint32_t i = 0; i <= Steps; ++i) {
@@ -426,7 +426,7 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		static char const *const help[4] = {
-			"Cut ACROSS the yellow lifeline.",
+			"Cut ACROSS the blue lifeline.",
 			"WASD moves, mouse aims, Space cuts.",
 			"Try exploring the room if it's too hard!",
 			"Esc steps back into the ward.",
