@@ -1,7 +1,7 @@
 # Build the game for Windows and macOS and publish both as a GitHub release.
 # Run it from the Actions tab ("Run workflow"), pick the branch to build.
 # Builds from main become normal releases, other branches become prereleases.
-# Each release is named after the branch, the Pittsburgh time and the commit.
+# Each release is titled with the branch and the Pittsburgh time of the build.
 name: Release
 
 on:
@@ -41,7 +41,10 @@ jobs:
           sha=$(git ls-remote "https://github.com/$SOURCE_REPO" "refs/heads/$BRANCH" | cut -f1)
           if [ -z "$sha" ]; then echo "no branch named $BRANCH in $SOURCE_REPO"; exit 1; fi
           now=$(date +%s)
-          tag="${BRANCH//\//-}-$(TZ=America/New_York date -d @$now +%Y%m%d-%H%M%S)-${sha:0:7}"
+          # a SemVer tag (date.time.0): the releases page sorts releases of the same day by
+          # version number, so this keeps the newest build on top. Branch and time are in the title.
+          day=$(TZ=America/New_York date -d @$now +%Y%m%d); hms=$(TZ=America/New_York date -d @$now +%H%M%S)
+          tag="v$day.$((10#$hms)).0"
           title="built from: $BRANCH branch, $(TZ=America/New_York date -d @$now '+%Y-%m-%d %H:%M:%S')"
           if [ "$BRANCH" = main ]; then pre=false; else pre=true; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -220,12 +223,11 @@ jobs:
               f"Windows and macOS builds of https://github.com/{source}. To make a new one, open",
               f"https://github.com/{repo}/actions/workflows/release.yml , click Run workflow and type a branch name.", "",
               "## Latest build of each branch", "",
-              "| Branch | Built (Pittsburgh time) | Commit | Download |",
-              "|---|---|---|---|",
+              "| Branch | Built (Pittsburgh time) | Download |",
+              "|---|---|---|",
           ]
           for branch, (when, tag) in sorted(latest.items(), key=lambda kv: kv[1][0], reverse=True):
-              commit = tag.rsplit("-", 1)[-1]
-              lines.append(f"| {branch} | {when} | [{commit}](https://github.com/{source}/commit/{commit}) | [release](https://github.com/{repo}/releases/tag/{tag}) |")
+              lines.append(f"| {branch} | {when} | [release](https://github.com/{repo}/releases/tag/{tag}) |")
           lines += ["", "This file is updated by the release workflow."]
           open("README.md", "w").write("\n".join(lines) + "\n")
           PY
