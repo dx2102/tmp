@@ -151,7 +151,7 @@ struct SoulCaptureMode : Mode {
 	//---- level 1: the soul freezes for a moment now and then ----
 	float pause_left = 0.0f, next_pause = 2.0f;
 	//---- level 2: the soul slowly backs away from the scythe ----
-	static constexpr float FleeRadius = 0.55f; //starts backing away when the scythe is this close
+	static constexpr float FleeRadius = 0.9f; //starts backing away when the scythe is this close
 	static constexpr float FleeSpeed = 0.5f; //world units per second when the scythe is right on it
 	//---- level 3: the soul is shielded for ShieldSeconds out of every ShieldPeriod ----
 	static constexpr float ShieldPeriod = 5.0f, ShieldSeconds = 2.0f;

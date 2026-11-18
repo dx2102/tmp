@@ -63,7 +63,7 @@ SoulCaptureMode::SoulCaptureMode(Difficulty const &difficulty_) : difficulty(dif
 			float angle = start + i * 2.0f * float(M_PI) / 3.0f + 0.4f * (unit(mt) - 0.5f);
 			glm::vec2 center = glm::mix(0.5f, 0.65f, unit(mt)) * glm::vec2(std::cos(angle), std::sin(angle));
 			float tilt = angle + 0.5f * float(M_PI) + 0.6f * (unit(mt) - 0.5f);
-			glm::vec2 half = 0.13f * glm::vec2(std::cos(tilt), std::sin(tilt));
+			glm::vec2 half = 0.195f * glm::vec2(std::cos(tilt), std::sin(tilt));
 			planks.emplace_back(Plank{ center - half, center + half });
 		}
 	}
