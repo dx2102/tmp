@@ -1,0 +1,196 @@
+# Build the game for Windows and macOS and publish both as a GitHub release.
+# Run it from the Actions tab ("Run workflow"), pick the branch to build.
+# Builds from main become normal releases, other branches become prereleases.
+# Each release is named after the branch, the Pittsburgh time and the commit.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build
+        default: main
+        required: true
+      notes:
+        description: Notes for this release (optional)
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPO: ${{ github.repository }}
+  NEST_LIBS: https://github.com/15-466/nest-libs/releases/download/v0.15
+
+jobs:
+  # pin one commit so both platforms build the same code, and pick the release name
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.m.outputs.sha }}
+      tag: ${{ steps.m.outputs.tag }}
+      title: ${{ steps.m.outputs.title }}
+      prerelease: ${{ steps.m.outputs.prerelease }}
+    steps:
+      - id: m
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          sha=$(git ls-remote "https://github.com/$SOURCE_REPO" "refs/heads/$BRANCH" | cut -f1)
+          if [ -z "$sha" ]; then echo "no branch named $BRANCH in $SOURCE_REPO"; exit 1; fi
+          now=$(date +%s)
+          tag="${BRANCH//\//-}-$(TZ=America/New_York date -d @$now +%Y%m%d-%H%M%S)-${sha:0:7}"
+          title="built from: $BRANCH branch, $(TZ=America/New_York date -d @$now '+%Y-%m-%d %H:%M:%S')"
+          if [ "$BRANCH" = main ]; then pre=false; else pre=true; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          echo "building $SOURCE_REPO $BRANCH at $sha as $tag (prerelease: $pre)"
+
+  build-windows:
+    needs: meta
+    runs-on: windows-latest
+    env:
+      NAME: death-windows-${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.sha }}
+
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
+
+      # keep the dist folder inside the package: text-pipeline.cpp opens the font as
+      # "dist/LowresPixel-Regular.otf" relative to the working directory
+      - name: Build and package
+        shell: bash
+        run: |
+          # Git Bash has its own link.exe on PATH, put the MSVC one (next to cl.exe) first
+          export PATH="$(dirname "$(which cl)"):$PATH"
+          rm -rf objs
+          curl -fL -o ../nest-libs.zip "$NEST_LIBS/nest-libs-windows-v0.15.zip"
+          7z x -y -o.. ../nest-libs.zip > /dev/null
+          node Maekfile.js -q dist/game.exe
+          cp ../nest-libs/windows/SDL3/dist/SDL3.dll ../nest-libs/windows/*/dist/README-*.txt dist/
+          rm -f dist/game.pdb dist/*.ilk
+          mkdir "$NAME" && mv dist "$NAME/dist"
+          7z a -r "$NAME.zip" "$NAME" > /dev/null
+
+      # The runner has no GPU, so the game cannot get an OpenGL 3.3 context and stops
+      # early. That still catches a missing dll: then the process dies before main()
+      # prints anything at all.
+      - name: Smoke test
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $exe = Join-Path $PWD "$env:NAME\dist\game.exe"
+          Write-Host "--- imports ---"
+          $deps = (dumpbin /dependents $exe | Select-String -Pattern '^\s+(\S+\.dll)$').Matches | ForEach-Object { $_.Groups[1].Value }
+          $missing = @()
+          foreach ($d in $deps) {
+            if ($d -match '^(api|ext)-ms-win-') { $where = "api set, resolved by the loader" }
+            elseif (Test-Path (Join-Path $PWD "$env:NAME\dist\$d")) { $where = "shipped in the package" }
+            elseif (Test-Path (Join-Path $env:SystemRoot "System32\$d")) { $where = "on the system" }
+            else { $where = "NOT FOUND"; $missing += $d }
+            Write-Host ("{0,-28} {1}" -f $d, $where)
+          }
+          if ($missing.Count -gt 0) { throw "these dlls are neither shipped nor on the system: $($missing -join ', ')" }
+
+          Write-Host "--- launch ---"
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Join-Path $PWD $env:NAME) -PassThru `
+                 -RedirectStandardOutput smoke-out.txt -RedirectStandardError smoke-err.txt
+          $alive = -not $p.WaitForExit(20000)
+          if ($alive) { $p.Kill(); $p.WaitForExit() }
+          $out = (Get-Content smoke-out.txt -Raw -ErrorAction SilentlyContinue)
+          Write-Host "stdout:"; Write-Host $out
+          Write-Host "stderr:"; Write-Host (Get-Content smoke-err.txt -Raw -ErrorAction SilentlyContinue)
+          if (-not ($out -match 'Code page is properly set')) {
+            throw "game.exe never reached main(): exit code 0x$('{0:X8}' -f $p.ExitCode). A dll is probably missing."
+          }
+          Write-Host "RESULT: main() ran (exit code $($p.ExitCode), alive: $alive)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: ${{ env.NAME }}.zip
+          if-no-files-found: error
+
+  build-macos:
+    needs: meta
+    runs-on: macos-latest
+    env:
+      NAME: death-macos-${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.sha }}
+
+      # keep the dist folder inside the package, see the Windows job
+      - name: Build and package
+        run: |
+          rm -rf objs
+          curl -fL "$NEST_LIBS/nest-libs-macos-v0.15.tar.gz" | tar xz -C ..
+          node Maekfile.js -q dist/game
+          file dist/game
+          cp ../nest-libs/macos/*/dist/README-*.txt dist/
+          mkdir "$NAME" && mv dist "$NAME/dist"
+          tar czf "$NAME.tar.gz" "$NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: ${{ env.NAME }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [meta, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          TITLE: ${{ needs.meta.outputs.title }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          BRANCH: ${{ inputs.branch }}
+          NOTES: ${{ inputs.notes }}
+          PRE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          cat > notes.md <<EOF
+          Built from \`$BRANCH\` of $SOURCE_REPO at commit [${SHA:0:7}](https://github.com/$SOURCE_REPO/commit/$SHA).
+
+          ## Running it
+
+          Paste one line into a terminal. It downloads, unpacks and starts the game, and it does not trip any security warning, because files fetched from a terminal are not marked as downloaded.
+
+          **macOS** (Apple silicon only):
+
+          \`\`\`
+          cd ~/Downloads && curl -fLO $base/death-macos-$TAG.tar.gz && tar xzf death-macos-$TAG.tar.gz && cd death-macos-$TAG && ./dist/game
+          \`\`\`
+
+          **Windows** (PowerShell):
+
+          \`\`\`
+          cd ~\\Downloads; curl.exe -fLO $base/death-windows-$TAG.zip; tar -xf death-windows-$TAG.zip; cd death-windows-$TAG; .\\dist\\game.exe
+          \`\`\`
+
+          If you download the archive by hand instead, unpack it and start the game from the unpacked folder (the one that contains \`dist\`), otherwise it cannot find its font and quits. On macOS, run \`xattr -dr com.apple.quarantine .\` in that folder once first.
+
+          ## Making a new build
+
+          Open https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml , click **Run workflow**, type the branch to build and press the green button. A new release shows up here about two minutes later.
+          EOF
+          # the optional notes typed into the Run workflow form go first:
+          if [ -n "$NOTES" ]; then { printf '%s\n\n' "$NOTES"; cat notes.md; } > with-notes.md && mv with-notes.md notes.md; fi
+          flag=""
+          if [ "$PRE" = true ]; then flag="--prerelease"; fi
+          gh release create "$TAG" packages/*/* -R "$GITHUB_REPOSITORY" --target "$SHA" \
+            --title "$TITLE" --notes-file notes.md $flag
