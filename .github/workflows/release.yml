@@ -60,24 +60,17 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1.13.0
 
-      - name: Fetch nest-libs, drop committed object files
+      # keep the dist folder inside the package: text-pipeline.cpp opens the font as
+      # "dist/LowresPixel-Regular.otf" relative to the working directory
+      - name: Build and package
         shell: bash
         run: |
+          # Git Bash has its own link.exe on PATH, put the MSVC one (next to cl.exe) first
+          export PATH="$(dirname "$(which cl)"):$PATH"
           rm -rf objs
           curl -fL -o ../nest-libs.zip "$NEST_LIBS/nest-libs-windows-v0.15.zip"
           7z x -y -o.. ../nest-libs.zip > /dev/null
-
-      # cmd, not bash: Git Bash puts its own coreutils link.exe ahead of the MSVC
-      # one on PATH, and that link does not understand MSVC flags
-      - name: Build
-        shell: cmd
-        run: node Maekfile.js -q dist/game.exe
-
-      # keep the dist folder inside the package: text-pipeline.cpp opens the font as
-      # "dist/LowresPixel-Regular.otf" relative to the working directory
-      - name: Package
-        shell: bash
-        run: |
+          node Maekfile.js -q dist/game.exe
           cp ../nest-libs/windows/SDL3/dist/SDL3.dll ../nest-libs/windows/*/dist/README-*.txt dist/
           rm -f dist/game.pdb dist/*.ilk
           mkdir "$NAME" && mv dist "$NAME/dist"
@@ -133,19 +126,13 @@ jobs:
           repository: ${{ env.SOURCE_REPO }}
           ref: ${{ needs.meta.outputs.sha }}
 
-      - name: Fetch nest-libs, drop committed object files
+      # keep the dist folder inside the package, see the Windows job
+      - name: Build and package
         run: |
           rm -rf objs
           curl -fL "$NEST_LIBS/nest-libs-macos-v0.15.tar.gz" | tar xz -C ..
-
-      - name: Build
-        run: |
           node Maekfile.js -q dist/game
           file dist/game
-
-      # keep the dist folder inside the package, see the Windows job
-      - name: Package
-        run: |
           cp ../nest-libs/macos/*/dist/README-*.txt dist/
           mkdir "$NAME" && mv dist "$NAME/dist"
           tar czf "$NAME.tar.gz" "$NAME"
