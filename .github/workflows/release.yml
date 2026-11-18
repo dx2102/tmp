@@ -151,7 +151,13 @@ jobs:
   release:
     needs: [meta, build-windows, build-macos]
     runs-on: ubuntu-latest
+    # every release adds a commit to main, so let them run one at a time
+    concurrency: release-commits
     steps:
+      # the newest main, which may already have the build list commit of an earlier run
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
       - uses: actions/download-artifact@v4
         with:
           path: packages
@@ -195,5 +201,40 @@ jobs:
           if [ -n "$NOTES" ]; then { printf '%s\n\n' "$NOTES"; cat notes.md; } > with-notes.md && mv with-notes.md notes.md; fi
           flag=""
           if [ "$PRE" = true ]; then flag="--prerelease"; fi
-          gh release create "$TAG" packages/*/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+
+          # List the latest build of every branch in README.md and commit it. The new tag
+          # then points at a newer commit than all the others, which keeps the releases
+          # page newest first (it sorts by the date of the tagged commit).
+          gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName,name > releases.json
+          python3 - <<'PY'
+          import json, os, re
+          repo, source = os.environ["GITHUB_REPOSITORY"], os.environ["SOURCE_REPO"]
+          releases = json.load(open("releases.json")) + [{"tagName": os.environ["TAG"], "name": os.environ["TITLE"]}]
+          latest = {}
+          for r in releases:
+              m = re.match(r"built from: (.+) branch, (.+)$", r["name"] or "")
+              if m and (m[1] not in latest or m[2] > latest[m[1]][0]):
+                  latest[m[1]] = (m[2], r["tagName"])
+          lines = [
+              "# Builds of " + source, "",
+              f"Windows and macOS builds of https://github.com/{source}. To make a new one, open",
+              f"https://github.com/{repo}/actions/workflows/release.yml , click Run workflow and type a branch name.", "",
+              "## Latest build of each branch", "",
+              "| Branch | Built (Pittsburgh time) | Commit | Download |",
+              "|---|---|---|---|",
+          ]
+          for branch, (when, tag) in sorted(latest.items(), key=lambda kv: kv[1][0], reverse=True):
+              commit = tag.rsplit("-", 1)[-1]
+              lines.append(f"| {branch} | {when} | [{commit}](https://github.com/{source}/commit/{commit}) | [release](https://github.com/{repo}/releases/tag/{tag}) |")
+          lines += ["", "This file is updated by the release workflow."]
+          open("README.md", "w").write("\n".join(lines) + "\n")
+          PY
+          cat README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Build list: $TAG"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
+          gh release create "$TAG" packages/*/* -R "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" \
             --title "$TITLE" --notes-file notes.md $flag
