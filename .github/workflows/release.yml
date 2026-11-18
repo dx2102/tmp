@@ -159,13 +159,31 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           PRE: ${{ needs.meta.outputs.prerelease }}
         run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           cat > notes.md <<EOF
           Built from \`$BRANCH\` of $SOURCE_REPO at commit $SHA.
 
-          Start the game from the unpacked folder (the one that contains \`dist\`), otherwise it cannot find its font and quits.
+          ## Running it
 
-          - Windows: unzip, open a terminal in the unzipped folder, run \`dist\\game.exe\`.
-          - macOS (Apple silicon only): unpack, \`cd\` into the folder, run \`xattr -dr com.apple.quarantine .\` once, then \`./dist/game\`.
+          Paste one line into a terminal. It downloads, unpacks and starts the game, and it does not trip any security warning, because files fetched from a terminal are not marked as downloaded.
+
+          **macOS** (Apple silicon only):
+
+          \`\`\`
+          cd ~/Downloads && curl -fLO $base/death-macos-$TAG.tar.gz && tar xzf death-macos-$TAG.tar.gz && cd death-macos-$TAG && ./dist/game
+          \`\`\`
+
+          **Windows** (PowerShell):
+
+          \`\`\`
+          cd ~\\Downloads; curl.exe -fLO $base/death-windows-$TAG.zip; tar -xf death-windows-$TAG.zip; cd death-windows-$TAG; .\\dist\\game.exe
+          \`\`\`
+
+          If you download the archive by hand instead, unpack it and start the game from the unpacked folder (the one that contains \`dist\`), otherwise it cannot find its font and quits. On macOS, run \`xattr -dr com.apple.quarantine .\` in that folder once first.
+
+          ## Making a new build
+
+          Open [Actions > Release](https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml), click **Run workflow**, type the branch to build and press the green button. A new release shows up here about two minutes later.
           EOF
           flag=""
           if [ "$PRE" = true ]; then flag="--prerelease"; fi
