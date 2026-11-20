@@ -172,7 +172,7 @@ struct SoulCaptureMode : Mode {
 	static constexpr float PlankWidth = 0.03f;
 	static constexpr float PlankReach = 0.03f; //how close the scythe's handle can walk up to a plank
 	//---- difficulty 5: the soul mends one hit for every MendSeconds without a new hit ----
-	static constexpr float MendSeconds = 3.5f;
+	static constexpr float MendSeconds = 3.0f;
 	float mend_clock = 0.0f;
 
 	PixelCanvas canvas;
