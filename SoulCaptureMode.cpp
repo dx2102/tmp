@@ -412,8 +412,12 @@ void SoulCaptureMode::update(float elapsed) {
 
 	if (!captured) {
 		timer += elapsed;
-		//swing around the starting angle by a fixed amount instead of drifting away from it:
-		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * std::sin(difficulty.swing_speed * move_clock + wander_phase.x);
+		//swing around the starting angle instead of drifting away from it. Two sines at
+		//unrelated speeds, like the soul's wander, so it speeds up, slows down and
+		//sometimes turns back early instead of ticking like a metronome:
+		float t = difficulty.swing_speed * move_clock;
+		float swing = (std::sin(t + wander_phase.x) + 0.5f * std::sin(2.3f * t + wander_phase.y)) / 1.5f;
+		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * swing;
 	}
 }
 
