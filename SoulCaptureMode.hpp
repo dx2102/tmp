@@ -66,6 +66,7 @@ struct SoulCaptureMode : Mode {
 	glm::vec2 soul_offset = glm::vec2(0.0f);
 	glm::vec2 soul_velocity = glm::vec2(0.0f);
 	glm::vec2 wander_phase = glm::vec2(0.0f);
+	uint32_t noise_seed = 0; //picks the random curves the soul wanders and the lifeline swings along
 	float clock = 0.0f;
 	//drives the soul's wandering and the lifeline's swing; stops while the soul pauses:
 	float move_clock = 0.0f;

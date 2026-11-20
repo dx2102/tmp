@@ -15,11 +15,28 @@ static glm::u8vec4 const Red = glm::u8vec4(0xff, 0x44, 0x44, 0xff);
 static glm::u8vec4 const Orange = glm::u8vec4(0xff, 0x88, 0x22, 0xff);
 static glm::u8vec4 const White = glm::vec4(0xff, 0xff, 0xff, 0xff);
 
+//a random value from -1 to 1 for every whole number x, the same every time for the same seed:
+static float noise_point(uint32_t seed, int32_t x) {
+	uint32_t h = seed ^ (uint32_t(x) * 0x9E3779B1u);
+	h ^= h >> 15; h *= 0x2C1B3C6Du;
+	h ^= h >> 12; h *= 0x297A2D39u;
+	h ^= h >> 15;
+	return float(h) / float(0xffffffffu) * 2.0f - 1.0f;
+}
+
+//a smooth random curve: random points at every whole number, joined by a Catmull-Rom
+//curve (it passes through every point). Mostly -1 to 1, sometimes a little past that:
+static float noise(uint32_t seed, float x) {
+	int32_t i = int32_t(std::floor(x));
+	float f = x - float(i);
+	float p0 = noise_point(seed, i - 1), p1 = noise_point(seed, i), p2 = noise_point(seed, i + 1), p3 = noise_point(seed, i + 2);
+	return 0.5f * (2.0f * p1 + (p2 - p0) * f + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * f * f + (3.0f * p1 - p0 - 3.0f * p2 + p3) * f * f * f);
+}
+
 glm::vec2 SoulCaptureMode::wander() const {
-	float t = move_clock * difficulty.wander_speed;
-	glm::vec2 loop = glm::vec2(std::cos(t + wander_phase.x), std::sin(t + wander_phase.x));
-	glm::vec2 wobble = glm::vec2(std::cos(2.3f * t + wander_phase.y), std::sin(1.7f * t + wander_phase.y));
-	return difficulty.wander_radius * (loop + 0.5f * wobble) / 1.5f;
+	//0.75 makes it as fast on average as the old two-sine wander at the same wander_speed:
+	float t = 0.75f * move_clock * difficulty.wander_speed;
+	return difficulty.wander_radius * glm::vec2(noise(noise_seed, t), noise(noise_seed + 1, t));
 }
 
 SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
@@ -55,6 +72,7 @@ SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
 SoulCaptureMode::SoulCaptureMode(Difficulty const &difficulty_) : difficulty(difficulty_), mt(std::random_device()()) {
 	std::uniform_real_distribution< float > turn(0.0f, 2.0f * float(M_PI));
 	wander_phase = glm::vec2(turn(mt), turn(mt));
+	noise_seed = mt();
 	scythe_tex = sprites.load(data_path("scythe.png"));
 	soul_tex = sprites.load(data_path("soul.png"));
 	lifeline_base_angle = 0.5f * turn(mt);
@@ -412,12 +430,12 @@ void SoulCaptureMode::update(float elapsed) {
 
 	if (!captured) {
 		timer += elapsed;
-		//swing around the starting angle instead of drifting away from it. Two sines at
-		//unrelated speeds, like the soul's wander, so it speeds up, slows down and
-		//sometimes turns back early instead of ticking like a metronome:
-		float t = difficulty.swing_speed * move_clock;
-		float swing = (std::sin(t + wander_phase.x) + 0.5f * std::sin(2.3f * t + wander_phase.y)) / 1.5f;
-		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * swing;
+		//swing around the starting angle instead of drifting away from it, following a
+		//smooth random curve like the soul's wander, so it speeds up, slows down and
+		//turns back at random instead of ticking like a metronome.
+		//0.83 makes it as fast on average as the old two-sine swing at the same swing_speed:
+		float t = 0.83f * difficulty.swing_speed * move_clock;
+		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * noise(noise_seed + 2, t);
 	}
 }
 
