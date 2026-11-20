@@ -31,7 +31,7 @@ SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
 	d.wander_radius = 0.10f + 0.02f * step; //0.10 to 0.18, the soul is 0.1 across its radius
 	d.wander_speed = 1.0f + 0.075f * step; //1.0 to 1.3
 	d.lifeline_swing = 0.35f + 0.1f * step; //20 to 43 degrees to each side
-	d.swing_speed = 0.6f + 0.1f * step; //0.6 to 1.0
+	d.swing_speed = 0.75f + 0.125f * step; //0.75 to 1.25
 	d.angle_tolerance = glm::radians(30.0f - 2.0f * step); //30 to 22 degrees
 	if (n == 1) {
 		d.name = "difficulty 1: pauses";
@@ -96,6 +96,11 @@ static bool segments_cross(glm::vec2 a, glm::vec2 b, glm::vec2 c, glm::vec2 d, f
 	if (!(side_a * side_b < 0.0f && side(c, a, b) * side(d, a, b) < 0.0f)) return false;
 	*t = side_a / (side_a - side_b);
 	return true;
+}
+
+static float segment_distance(glm::vec2 p, glm::vec2 a, glm::vec2 b) {
+	float t = glm::clamp(glm::dot(p - a, b - a) / glm::dot(b - a, b - a), 0.0f, 1.0f);
+	return glm::length(p - (a + t * (b - a)));
 }
 
 SoulCaptureMode::SliceCheck SoulCaptureMode::check_slice(glm::vec2 a, glm::vec2 b) const {
@@ -251,7 +256,27 @@ void SoulCaptureMode::update(float elapsed) {
 		if (move_right) move.x += 1.0f;
 		if (move_down) move.y -= 1.0f;
 		if (move_up) move.y += 1.0f;
-		if (move != glm::vec2(0.0f)) scythe_at += glm::normalize(move) * move_speed * elapsed;
+		if (move != glm::vec2(0.0f)) {
+			glm::vec2 step = glm::normalize(move) * move_speed * elapsed;
+			//planks stop the scythe: no stepping across one or closer up to it
+			//(moving away is always fine, so it can't get stuck if it starts too close):
+			auto blocked = [&](glm::vec2 to) {
+				for (Plank const &p : planks) {
+					float t = 0.0f;
+					if (segments_cross(scythe_at, to, p.a, p.b, &t)) return true;
+					float d = segment_distance(to, p.a, p.b);
+					if (d < PlankReach && d < segment_distance(scythe_at, p.a, p.b)) return true;
+				}
+				return false;
+			};
+			//if the whole step is blocked, try sliding along x or y alone:
+			for (glm::vec2 s : { step, glm::vec2(step.x, 0.0f), glm::vec2(0.0f, step.y) }) {
+				if (s != glm::vec2(0.0f) && !blocked(scythe_at + s)) {
+					scythe_at += s;
+					break;
+				}
+			}
+		}
 		if (glm::length(scythe_at) > ArenaRadius) scythe_at = ArenaRadius * glm::normalize(scythe_at);
 	}
 

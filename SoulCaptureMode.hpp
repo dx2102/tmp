@@ -157,12 +157,13 @@ struct SoulCaptureMode : Mode {
 	static constexpr float FleeRadius = 0.9f; //starts backing away when the scythe is this close
 	static constexpr float FleeSpeed = 0.5f; //world units per second when the scythe is right on it
 	//---- difficulty 3: the soul is shielded for ShieldSeconds out of every ShieldPeriod ----
-	static constexpr float ShieldPeriod = 5.0f, ShieldSeconds = 2.0f;
+	static constexpr float ShieldPeriod = 5.0f, ShieldSeconds = 2.5f;
 	bool shielded() const { return difficulty.mechanic == Mechanic::Shield && !captured && std::fmod(clock, ShieldPeriod) > ShieldPeriod - ShieldSeconds; }
-	//---- difficulty 4: planks that stop the blade (but not the scythe walking) ----
+	//---- difficulty 4: planks that stop the blade, and the scythe walking into them ----
 	struct Plank { glm::vec2 a, b; };
 	std::vector< Plank > planks;
 	static constexpr float PlankWidth = 0.03f;
+	static constexpr float PlankReach = 0.03f; //how close the scythe's handle can walk up to a plank
 	//---- difficulty 5: the soul mends one hit for every MendSeconds without a new hit ----
 	static constexpr float MendSeconds = 3.5f;
 	float mend_clock = 0.0f;
