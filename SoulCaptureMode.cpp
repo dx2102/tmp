@@ -240,7 +240,7 @@ bool SoulCaptureMode::handle_event(SDL_Event const &evt, glm::uvec2 const &windo
 		} else if (evt.key.key == SDLK_S) {
 			move_down = true;
 			return true;
-		} else if (evt.key.key == SDLK_SPACE) {
+		} else if (evt.key.key == SDLK_SPACE || evt.key.key == SDLK_E) { //E like interacting in the ward
 			slice();
 			return true;
 		} else if (evt.key.key == SDLK_ESCAPE && return_to && !captured) {
@@ -617,7 +617,7 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 
 		static char const *const help[4] = {
 			"Cut ACROSS the blue lifeline.",
-			"WASD moves, mouse aims, Space cuts.",
+			"WASD moves, mouse aims, Space or E cuts.",
 			"Try exploring the room if it's too hard!",
 			"Esc steps back into the ward.",
 		};
