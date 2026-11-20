@@ -47,8 +47,8 @@ SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
 	float step = float(n - 1); //0 to 4
 	d.wander_radius = 0.10f + 0.02f * step; //0.10 to 0.18, the soul is 0.1 across its radius
 	d.wander_speed = 1.0f + 0.075f * step; //1.0 to 1.3
-	d.lifeline_swing = 1.265f * (0.35f + 0.1f * step); //25 to 54 degrees to each side
-	d.swing_speed = 1.265f * (0.75f + 0.125f * step); //0.95 to 1.58
+	d.lifeline_swing = 1.39f * (0.35f + 0.1f * step); //28 to 60 degrees to each side
+	d.swing_speed = 1.39f * (0.75f + 0.125f * step); //1.04 to 1.74
 	d.angle_tolerance = glm::radians(30.0f - 2.0f * step); //30 to 22 degrees
 	if (n == 1) {
 		d.name = "difficulty 1: pauses";
