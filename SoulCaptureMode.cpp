@@ -54,25 +54,13 @@ SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
 
 SoulCaptureMode::SoulCaptureMode(Difficulty const &difficulty_) : difficulty(difficulty_), mt(std::random_device()()) {
 	std::uniform_real_distribution< float > turn(0.0f, 2.0f * float(M_PI));
-	std::uniform_real_distribution< float > unit(0.0f, 1.0f);
 	wander_phase = glm::vec2(turn(mt), turn(mt));
 	scythe_tex = sprites.load(data_path("scythe.png"));
 	soul_tex = sprites.load(data_path("soul.png"));
 	lifeline_base_angle = 0.5f * turn(mt);
 	lifeline_angle = lifeline_base_angle;
 
-	if (difficulty.mechanic == Mechanic::Planks) {
-		//three planks around the ring between the soul's home area and the arena edge,
-		//lying roughly along the circle so they block cuts from that side:
-		float start = turn(mt);
-		for (uint32_t i = 0; i < 3; ++i) {
-			float angle = start + i * 2.0f * float(M_PI) / 3.0f + 0.4f * (unit(mt) - 0.5f);
-			glm::vec2 center = glm::mix(0.5f, 0.65f, unit(mt)) * glm::vec2(std::cos(angle), std::sin(angle));
-			float tilt = angle + 0.5f * float(M_PI) + 0.6f * (unit(mt) - 0.5f);
-			glm::vec2 half = 0.195f * glm::vec2(std::cos(tilt), std::sin(tilt));
-			planks.emplace_back(Plank{ center - half, center + half });
-		}
-	}
+	if (difficulty.mechanic == Mechanic::Planks) place_planks();
 }
 
 SoulCaptureMode::~SoulCaptureMode() {
@@ -85,6 +73,8 @@ void SoulCaptureMode::restart(Difficulty const &difficulty_) {
 	next->blade_angle = blade_angle;
 	next->canvas.rect = canvas.rect;
 	next->return_to = return_to;
+	//the planks were placed for the default scythe spot, place them again for this one:
+	if (next->difficulty.mechanic == Mechanic::Planks) next->place_planks();
 	Mode::set_current(next);
 }
 
@@ -101,6 +91,34 @@ static bool segments_cross(glm::vec2 a, glm::vec2 b, glm::vec2 c, glm::vec2 d, f
 static float segment_distance(glm::vec2 p, glm::vec2 a, glm::vec2 b) {
 	float t = glm::clamp(glm::dot(p - a, b - a) / glm::dot(b - a, b - a), 0.0f, 1.0f);
 	return glm::length(p - (a + t * (b - a)));
+}
+
+void SoulCaptureMode::place_planks() {
+	planks.clear();
+	std::uniform_real_distribution< float > unit(0.0f, 1.0f);
+	glm::vec2 to_scythe = scythe_at - soul_center;
+	float toward_scythe = std::atan2(to_scythe.y, to_scythe.x);
+	for (uint32_t i = 0; i < PlankCount; ++i) {
+		for (uint32_t attempt = 0; attempt < 50; ++attempt) {
+			//the first plank tries to sit between the soul and the scythe, the rest go anywhere around:
+			float angle = (i == 0 && attempt < 25) ? toward_scythe + 0.4f * (unit(mt) - 0.5f) : 2.0f * float(M_PI) * unit(mt);
+			glm::vec2 center = soul_center + glm::mix(PlankNear, PlankFar, unit(mt)) * glm::vec2(std::cos(angle), std::sin(angle));
+			//lying roughly along the circle around the soul, so it blocks cuts from that side:
+			float tilt = angle + 0.5f * float(M_PI) + 0.6f * (unit(mt) - 0.5f);
+			glm::vec2 half = PlankHalfLength * glm::vec2(std::cos(tilt), std::sin(tilt));
+			Plank p{ center - half, center + half };
+			//inside the arena, not on top of the scythe, not piled on another plank:
+			bool ok = glm::length(p.a) < ArenaRadius && glm::length(p.b) < ArenaRadius
+				&& segment_distance(scythe_at, p.a, p.b) > 0.15f;
+			for (Plank const &q : planks) {
+				if (glm::length(0.5f * (q.a + q.b) - center) < 0.25f) ok = false;
+			}
+			if (ok) {
+				planks.emplace_back(p);
+				break;
+			}
+		}
+	}
 }
 
 SoulCaptureMode::SliceCheck SoulCaptureMode::check_slice(glm::vec2 a, glm::vec2 b) const {
@@ -325,6 +343,7 @@ void SoulCaptureMode::update(float elapsed) {
 		soul_offset -= home - soul_center;
 		soul_center = home;
 		move_pending = false;
+		if (difficulty.mechanic == Mechanic::Planks) place_planks();
 	}
 
 	pivot = scythe_at;
