@@ -260,21 +260,22 @@ void SoulCaptureMode::update(float elapsed) {
 			glm::vec2 step = glm::normalize(move) * move_speed * elapsed;
 			//planks stop the scythe: no stepping across one or closer up to it
 			//(moving away is always fine, so it can't get stuck if it starts too close):
-			auto blocked = [&](glm::vec2 to) {
+			auto blocker = [&](glm::vec2 to) -> Plank const * {
 				for (Plank const &p : planks) {
 					float t = 0.0f;
-					if (segments_cross(scythe_at, to, p.a, p.b, &t)) return true;
+					if (segments_cross(scythe_at, to, p.a, p.b, &t)) return &p;
 					float d = segment_distance(to, p.a, p.b);
-					if (d < PlankReach && d < segment_distance(scythe_at, p.a, p.b)) return true;
+					if (d < PlankReach && d < segment_distance(scythe_at, p.a, p.b) - 1e-5f) return &p;
 				}
-				return false;
+				return nullptr;
 			};
-			//if the whole step is blocked, try sliding along x or y alone:
-			for (glm::vec2 s : { step, glm::vec2(step.x, 0.0f), glm::vec2(0.0f, step.y) }) {
-				if (s != glm::vec2(0.0f) && !blocked(scythe_at + s)) {
-					scythe_at += s;
-					break;
-				}
+			if (Plank const *hit = blocker(scythe_at + step)) {
+				//slide along the plank: keep only the part of the step that runs along it
+				glm::vec2 along = glm::normalize(hit->b - hit->a);
+				glm::vec2 slide = glm::dot(step, along) * along;
+				if (!blocker(scythe_at + slide)) scythe_at += slide;
+			} else {
+				scythe_at += step;
 			}
 		}
 		if (glm::length(scythe_at) > ArenaRadius) scythe_at = ArenaRadius * glm::normalize(scythe_at);
