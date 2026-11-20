@@ -17,13 +17,17 @@
 #include "Sprites.hpp"
 
 struct SoulCaptureMode : Mode {
-	//for playtesting, every difficulty adds one mechanic to the same soul and lifeline:
+	//for playtesting, every difficulty adds one mechanic, and the soul moves and the
+	//lifeline turns a bit more with every level. The mechanics are ordered roughly
+	//from easiest to hardest:
 	enum class Mechanic { None, Pauses, Flees, Shield, Planks, Mends };
 	struct Difficulty {
 		char const *name = "normal";
 		float lifeline_swing = 0.0f; //how far the lifeline swings to each side of its starting angle, in radians
+		float swing_speed = 0.9f; //how fast it swings back and forth
 		float wander_radius = 0.05f;
 		float wander_speed = 0.6f;
+		float angle_tolerance = 0.6109f; //how far from straight across a cut may be, in radians (0.6109 is 35 degrees)
 		Mechanic mechanic = Mechanic::None;
 	};
 	static constexpr uint32_t Levels = 5;
@@ -31,7 +35,6 @@ struct SoulCaptureMode : Mode {
 	//PlayMode asks for these two: normal after reading the diary, hard otherwise
 	static Difficulty normal() { return level(1); }
 	static Difficulty hard() { return level(3); }
-	static constexpr float AngleTolerance = 0.6109f; //35 degrees
 	static constexpr uint32_t HitsNeeded = 5;
 
 	SoulCaptureMode(Difficulty const &difficulty);
@@ -161,7 +164,7 @@ struct SoulCaptureMode : Mode {
 	std::vector< Plank > planks;
 	static constexpr float PlankWidth = 0.03f;
 	//---- difficulty 5: the soul mends one hit for every MendSeconds without a new hit ----
-	static constexpr float MendSeconds = 4.0f;
+	static constexpr float MendSeconds = 3.5f;
 	float mend_clock = 0.0f;
 
 	PixelCanvas canvas;

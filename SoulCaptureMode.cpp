@@ -23,13 +23,19 @@ glm::vec2 SoulCaptureMode::wander() const {
 }
 
 SoulCaptureMode::Difficulty SoulCaptureMode::level(uint32_t n) {
-	Difficulty d; //every difficulty keeps the gentle soul movement unless noted, only the mechanic differs
-	if (n <= 1) {
+	Difficulty d;
+	n = std::clamp(n, 1u, Levels);
+	//each level the soul wanders further and faster, the lifeline swings wider and
+	//faster, and the cut has to be a little closer to straight across:
+	float step = float(n - 1); //0 to 4
+	d.wander_radius = 0.10f + 0.02f * step; //0.10 to 0.18, the soul is 0.1 across its radius
+	d.wander_speed = 1.0f + 0.075f * step; //1.0 to 1.3
+	d.lifeline_swing = 0.35f + 0.1f * step; //20 to 43 degrees to each side
+	d.swing_speed = 0.6f + 0.1f * step; //0.6 to 1.0
+	d.angle_tolerance = glm::radians(30.0f - 2.0f * step); //30 to 22 degrees
+	if (n == 1) {
 		d.name = "difficulty 1: pauses";
 		d.mechanic = Mechanic::Pauses;
-		//it darts around more so the sudden stops are noticeable:
-		d.wander_radius = 0.12f;
-		d.wander_speed = 1.3f;
 	} else if (n == 2) {
 		d.name = "difficulty 2: flees";
 		d.mechanic = Mechanic::Flees;
@@ -109,7 +115,7 @@ SoulCaptureMode::SliceCheck SoulCaptureMode::check_slice(glm::vec2 a, glm::vec2 
 	float angle = std::acos(std::min(1.0f, std::abs(glm::dot(glm::normalize(b - a), lifeline_dir()))));
 	ret.angle_error = 0.5f * float(M_PI) - angle;
 	ret.shielded = shielded();
-	ret.hit = ret.crosses && ret.angle_error < AngleTolerance && !ret.shielded;
+	ret.hit = ret.crosses && ret.angle_error < difficulty.angle_tolerance && !ret.shielded;
 	return ret;
 }
 
@@ -362,7 +368,7 @@ void SoulCaptureMode::update(float elapsed) {
 	if (!captured) {
 		timer += elapsed;
 		//swing around the starting angle by a fixed amount instead of drifting away from it:
-		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * std::sin(0.9f * move_clock + wander_phase.x);
+		lifeline_angle = lifeline_base_angle + difficulty.lifeline_swing * std::sin(difficulty.swing_speed * move_clock + wander_phase.x);
 	}
 }
 
@@ -466,7 +472,7 @@ void SoulCaptureMode::draw(glm::uvec2 const &drawable_size) {
 			else if (check.crosses && check.shielded) color = Orange;
 			else if (check.hit) color = Green;
 			else if (check.crosses) {
-				float off = (check.angle_error - AngleTolerance) / (0.5f * float(M_PI) - AngleTolerance);
+				float off = (check.angle_error - difficulty.angle_tolerance) / (0.5f * float(M_PI) - difficulty.angle_tolerance);
 				color = glm::u8vec4(glm::mix(glm::vec3(Orange), glm::vec3(Green), 0.7f * (1.0f - glm::clamp(off, 0.0f, 1.0f))), 0xff);
 			}
 			blade_tint = glm::vec4(glm::mix(glm::vec3(1.0f), glm::vec3(color) / 255.0f, 0.5f), 1.0f);
