@@ -155,7 +155,7 @@ struct SoulCaptureMode : Mode {
 	float pause_left = 0.0f, next_pause = 2.0f;
 	//---- difficulty 2: the soul slowly backs away from the scythe ----
 	static constexpr float FleeRadius = 0.9f; //starts backing away when the scythe is this close
-	static constexpr float FleeSpeed = 0.5f; //world units per second when the scythe is right on it
+	static constexpr float FleeSpeed = 0.8f; //world units per second when the scythe is right on it
 	//---- difficulty 3: the soul is shielded for ShieldSeconds out of every ShieldPeriod ----
 	static constexpr float ShieldPeriod = 5.0f, ShieldSeconds = 2.5f;
 	bool shielded() const { return difficulty.mechanic == Mechanic::Shield && !captured && std::fmod(clock, ShieldPeriod) > ShieldPeriod - ShieldSeconds; }
